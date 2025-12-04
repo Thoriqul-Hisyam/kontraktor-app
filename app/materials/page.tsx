@@ -18,6 +18,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  getMaterials,
+  createMaterial,
+  updateMaterial,
+  deleteMaterial,
+} from "@/actions/material";
 
 interface Material {
   id: number;
@@ -27,15 +33,18 @@ interface Material {
 }
 
 export default function MaterialsPage() {
-  const [materials, setMaterials] = React.useState<Material[]>([
-    { id: 1, name: "Cement", quantity: 50, unit: "Bags" },
-    { id: 2, name: "Bricks", quantity: 1000, unit: "Pcs" },
-    { id: 3, name: "Sand", quantity: 20, unit: "m³" },
-  ]);
-
+  const [materials, setMaterials] = React.useState<Material[]>([]);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Material | null>(null);
   const [form, setForm] = React.useState({ name: "", quantity: "", unit: "" });
+
+  // Load materials on mount
+  React.useEffect(() => {
+    (async () => {
+      const data = await getMaterials();
+      setMaterials(data);
+    })();
+  }, []);
 
   const openAddModal = () => {
     setEditing(null);
@@ -49,27 +58,33 @@ export default function MaterialsPage() {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const quantity = Number(form.quantity);
+
     if (editing) {
+      const updated = await updateMaterial(editing.id, {
+        name: form.name,
+        quantity,
+        unit: form.unit,
+      });
       setMaterials((prev) =>
-        prev.map((m) =>
-          m.id === editing.id
-            ? { ...m, ...form, quantity: Number(form.quantity) }
-            : m
-        )
+        prev.map((m) => (m.id === updated.id ? updated : m))
       );
     } else {
-      setMaterials((prev) => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          name: form.name,
-          quantity: Number(form.quantity),
-          unit: form.unit,
-        },
-      ]);
+      const created = await createMaterial({
+        name: form.name,
+        quantity,
+        unit: form.unit,
+      });
+      setMaterials((prev) => [...prev, created]);
     }
+
     setModalOpen(false);
+  };
+
+  const handleDelete = async (id: number) => {
+    await deleteMaterial(id);
+    setMaterials((prev) => prev.filter((m) => m.id !== id));
   };
 
   return (
@@ -108,9 +123,7 @@ export default function MaterialsPage() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() =>
-                      setMaterials((prev) => prev.filter((x) => x.id !== m.id))
-                    }
+                    onClick={() => handleDelete(m.id)}
                   >
                     Delete
                   </Button>
@@ -121,7 +134,6 @@ export default function MaterialsPage() {
         </Table>
       </div>
 
-      {/* Modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

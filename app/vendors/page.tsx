@@ -19,6 +19,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 
+import {
+  listVendors,
+  createVendor,
+  updateVendor,
+  deleteVendor,
+} from "@/actions/vendor";
+
 interface Vendor {
   id: number;
   name: string;
@@ -27,14 +34,19 @@ interface Vendor {
 }
 
 export default function VendorsPage() {
-  const [vendors, setVendors] = React.useState<Vendor[]>([
-    { id: 1, name: "PT. ABC", phone: "08123456789", email: "abc@mail.com" },
-    { id: 2, name: "CV. XYZ", phone: "08234567890", email: "xyz@mail.com" },
-  ]);
-
+  const [vendors, setVendors] = React.useState<Vendor[]>([]);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Vendor | null>(null);
   const [form, setForm] = React.useState({ name: "", phone: "", email: "" });
+
+  async function loadData() {
+    const data = await listVendors();
+    setVendors(data);
+  }
+
+  React.useEffect(() => {
+    loadData();
+  }, []);
 
   const openAddModal = () => {
     setEditing(null);
@@ -48,15 +60,20 @@ export default function VendorsPage() {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (editing) {
-      setVendors((prev) =>
-        prev.map((v) => (v.id === editing.id ? { ...v, ...form } : v))
-      );
+      await updateVendor(editing.id, form);
     } else {
-      setVendors((prev) => [...prev, { id: prev.length + 1, ...form }]);
+      await createVendor(form);
     }
+
     setModalOpen(false);
+    await loadData();
+  };
+
+  const handleDelete = async (id: number) => {
+    await deleteVendor(id);
+    await loadData();
   };
 
   return (
@@ -95,15 +112,20 @@ export default function VendorsPage() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() =>
-                      setVendors((prev) => prev.filter((x) => x.id !== v.id))
-                    }
+                    onClick={() => handleDelete(v.id)}
                   >
                     Delete
                   </Button>
                 </TableCell>
               </TableRow>
             ))}
+            {vendors.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center py-6">
+                  No data
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>

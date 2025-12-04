@@ -1,6 +1,30 @@
 "use client";
 
 import * as React from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  listPurchases,
+  createPurchase,
+  updatePurchase,
+  deletePurchase,
+} from "@/actions/purchase";
+import { getMaterials } from "@/actions/material";
+import { listVendors } from "@/actions/vendor";
 import {
   Table,
   TableHeader,
@@ -9,20 +33,22 @@ import {
   TableHead,
   TableCell,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+
+interface Material {
+  id: number;
+  name: string;
+  unit: string;
+}
+
+interface Vendor {
+  id: number;
+  name: string;
+}
 
 interface Purchase {
   id: number;
-  material: string;
-  vendor: string;
+  material: Material;
+  vendor: Vendor;
   quantity: number;
   unit: string;
   price: number;
@@ -30,48 +56,47 @@ interface Purchase {
 }
 
 export default function PurchasesPage() {
-  const [purchases, setPurchases] = React.useState<Purchase[]>([
-    {
-      id: 1,
-      material: "Cement",
-      vendor: "PT. ABC",
-      quantity: 20,
-      unit: "Bags",
-      price: 50000,
-      total: 1000000,
-    },
-    {
-      id: 2,
-      material: "Bricks",
-      vendor: "CV. XYZ",
-      quantity: 500,
-      unit: "Pcs",
-      price: 2000,
-      total: 1000000,
-    },
-  ]);
-
+  const [purchases, setPurchases] = React.useState<Purchase[]>([]);
+  const [materials, setMaterials] = React.useState<Material[]>([]);
+  const [vendors, setVendors] = React.useState<Vendor[]>([]);
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Purchase | null>(null);
   const [form, setForm] = React.useState({
-    material: "",
-    vendor: "",
+    materialId: 0,
+    vendorId: 0,
     quantity: "",
     unit: "",
     price: "",
   });
 
+  // Load initial data
+  React.useEffect(() => {
+    async function load() {
+      const [p, m, v] = await Promise.all([
+        listPurchases(),
+        getMaterials(),
+        listVendors(),
+      ]);
+      setPurchases(p);
+      setMaterials(m);
+      setVendors(v);
+    }
+    load();
+  }, []);
+
+  // Open add modal
   const openAddModal = () => {
     setEditing(null);
-    setForm({ material: "", vendor: "", quantity: "", unit: "", price: "" });
+    setForm({ materialId: 0, vendorId: 0, quantity: "", unit: "", price: "" });
     setModalOpen(true);
   };
 
+  // Open edit modal
   const openEditModal = (purchase: Purchase) => {
     setEditing(purchase);
     setForm({
-      material: purchase.material,
-      vendor: purchase.vendor,
+      materialId: purchase.material.id,
+      vendorId: purchase.vendor.id,
       quantity: String(purchase.quantity),
       unit: purchase.unit,
       price: String(purchase.price),
@@ -79,44 +104,44 @@ export default function PurchasesPage() {
     setModalOpen(true);
   };
 
-  const handleSave = () => {
-    const quantityNum = Number(form.quantity);
-    const priceNum = Number(form.price);
-    const totalNum = quantityNum * priceNum;
+  // Auto update unit when material changes
+  React.useEffect(() => {
+    const selectedMaterial = materials.find((m) => m.id === form.materialId);
+    if (selectedMaterial) {
+      setForm((prev) => ({ ...prev, unit: selectedMaterial.unit }));
+    }
+  }, [form.materialId, materials]);
+
+  // Handle save
+  const handleSave = async () => {
+    const payload = {
+      materialId: form.materialId,
+      vendorId: form.vendorId,
+      quantity: Number(form.quantity),
+      unit: form.unit,
+      price: Number(form.price),
+    };
 
     if (editing) {
-      setPurchases((prev) =>
-        prev.map((p) =>
-          p.id === editing.id
-            ? {
-                ...p,
-                material: form.material,
-                vendor: form.vendor,
-                quantity: quantityNum,
-                unit: form.unit,
-                price: priceNum,
-                total: totalNum,
-              }
-            : p
-        )
-      );
+      await updatePurchase(editing.id, payload);
     } else {
-      setPurchases((prev) => [
-        ...prev,
-        {
-          id: prev.length + 1,
-          material: form.material,
-          vendor: form.vendor,
-          quantity: quantityNum,
-          unit: form.unit,
-          price: priceNum,
-          total: totalNum,
-        },
-      ]);
+      await createPurchase(payload);
     }
 
+    const updated = await listPurchases();
+    setPurchases(updated);
     setModalOpen(false);
   };
+
+  // Handle delete
+  const handleDelete = async (id: number) => {
+    await deletePurchase(id);
+    const updated = await listPurchases();
+    setPurchases(updated);
+  };
+
+  // Live total preview
+  const totalPreview = Number(form.quantity || 0) * Number(form.price || 0);
 
   return (
     <div className="w-full max-w-7xl mx-auto p-4">
@@ -143,8 +168,8 @@ export default function PurchasesPage() {
             {purchases.map((p, idx) => (
               <TableRow key={p.id} className="hover:bg-gray-50">
                 <TableCell>{idx + 1}</TableCell>
-                <TableCell>{p.material}</TableCell>
-                <TableCell>{p.vendor}</TableCell>
+                <TableCell>{p.material.name}</TableCell>
+                <TableCell>{p.vendor.name}</TableCell>
                 <TableCell>{p.quantity}</TableCell>
                 <TableCell>{p.unit}</TableCell>
                 <TableCell>{p.price.toLocaleString()}</TableCell>
@@ -160,9 +185,7 @@ export default function PurchasesPage() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() =>
-                      setPurchases((prev) => prev.filter((x) => x.id !== p.id))
-                    }
+                    onClick={() => handleDelete(p.id)}
                   >
                     Delete
                   </Button>
@@ -182,33 +205,62 @@ export default function PurchasesPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <Input
-              placeholder="Material"
-              value={form.material}
-              onChange={(e) => setForm({ ...form, material: e.target.value })}
-            />
-            <Input
-              placeholder="Vendor"
-              value={form.vendor}
-              onChange={(e) => setForm({ ...form, vendor: e.target.value })}
-            />
+            <Select
+              value={form.materialId ? String(form.materialId) : ""}
+              onValueChange={(val) =>
+                setForm((prev) => ({ ...prev, materialId: Number(val) }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Material" />
+              </SelectTrigger>
+              <SelectContent>
+                {materials.map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={form.vendorId ? String(form.vendorId) : ""}
+              onValueChange={(val) =>
+                setForm((prev) => ({ ...prev, vendorId: Number(val) }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Vendor" />
+              </SelectTrigger>
+              <SelectContent>
+                {vendors.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>
+                    {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
             <Input
               placeholder="Quantity"
               type="number"
               value={form.quantity}
-              onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, quantity: e.target.value }))
+              }
             />
-            <Input
-              placeholder="Unit"
-              value={form.unit}
-              onChange={(e) => setForm({ ...form, unit: e.target.value })}
-            />
+            <Input placeholder="Unit" value={form.unit} readOnly />
             <Input
               placeholder="Price"
               type="number"
               value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, price: e.target.value }))
+              }
             />
+            <div className="text-right font-semibold">
+              Total: {totalPreview.toLocaleString()}
+            </div>
           </div>
           <DialogFooter className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setModalOpen(false)}>
